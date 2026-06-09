@@ -14,7 +14,7 @@
   <!-- NuGet package metadata -->
   <PropertyGroup>
     <PackageId>Anypost</PackageId>
-    <Version>0.1.0</Version>
+    <Version>1.0.0</Version>
     <Authors>unMTA LLC</Authors>
     <Company>unMTA LLC</Company>
     <Description>Official .NET client for the Anypost email API.</Description>
