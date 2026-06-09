@@ -1,5 +1,13 @@
 name: Release
 
+# Publishes to NuGet on a version tag (e.g. v1.0.0). Bump <Version> in
+# src/Anypost/Anypost.csproj, tag the commit, and push.
+#
+# Auth is NuGet Trusted Publishing (OIDC) — no stored API key. Configure the
+# trusted publishing policy on nuget.org (your username → Trusted Publishing)
+# for this repo + workflow, and set the NUGET_USER repository variable to your
+# nuget.org username (profile name, not email). `id-token: write` is required.
+
 on:
   push:
     tags: ['v*']
@@ -7,6 +15,9 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
@@ -24,11 +35,15 @@ jobs:
       - name: Pack
         run: dotnet pack src/Anypost/Anypost.csproj --configuration Release --output ./artifacts
 
+      - name: NuGet login (OIDC → short-lived API key)
+        uses: NuGet/login@v1
+        id: login
+        with:
+          user: ${{ vars.NUGET_USER }}
+
       - name: Push to NuGet
-        env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: >-
           dotnet nuget push "./artifacts/*.nupkg"
-          --api-key "$NUGET_API_KEY"
+          --api-key "${{ steps.login.outputs.NUGET_API_KEY }}"
           --source https://api.nuget.org/v3/index.json
           --skip-duplicate
