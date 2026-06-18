@@ -4,6 +4,31 @@ using Anypost.Internal;
 namespace Anypost.Models;
 
 /// <summary>
+/// Bot classification for a proxied open or click. Pure-noise machine traffic
+/// (mailbox prefetchers, scanners) never becomes an event, so the only kind a
+/// customer ever sees is <c>proxy</c> — a real open whose origin is anonymized by a
+/// mailbox image proxy (Gmail, Yahoo, etc.).
+/// </summary>
+public sealed record EventBot
+{
+    /// <summary>The detected mailbox image proxy, e.g. <c>google</c>, <c>yahoo</c>, <c>bing</c>.</summary>
+    public string Source { get; init; } = "";
+
+    /// <summary>Always <c>proxy</c> on customer-visible events.</summary>
+    public string Kind { get; init; } = "";
+}
+
+/// <summary>
+/// Tracking metadata on <c>email.opened</c> / <c>email.clicked</c> events, mirroring the
+/// webhook payload's <c>data.tracking</c>. <see cref="Bot"/> is set only when the
+/// interaction came from a mailbox image proxy; a human open/click has no bot.
+/// </summary>
+public sealed record EventTracking
+{
+    public EventBot? Bot { get; init; }
+}
+
+/// <summary>
 /// A single email-pipeline event for the team. Fields that don't apply to a given
 /// event type are null.
 /// </summary>
@@ -56,6 +81,14 @@ public sealed record Event
 
     /// <summary>The delivery attempt number, or null for non-delivery events.</summary>
     public int? Attempt { get; init; }
+
+    /// <summary>
+    /// Tracking metadata, mirroring the webhook payload's <c>data.tracking</c>. Null on
+    /// every event except opens/clicks, and on human opens/clicks. Its
+    /// <see cref="EventTracking.Bot"/> is set when the open/click came from a mailbox
+    /// image proxy.
+    /// </summary>
+    public EventTracking? Tracking { get; init; }
 }
 
 /// <summary>
