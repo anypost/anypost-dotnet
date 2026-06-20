@@ -7,6 +7,8 @@ dependencies are the first-party `Microsoft.Extensions.Http` and
 `Microsoft.Extensions.Options`, for the dependency-injection integration below.
 The client is safe for concurrent use.
 
+This README covers the SDK itself: installation, idioms, and configuration. For platform concepts and the full field-level API reference, see the [Anypost documentation](https://anypost.com/docs).
+
 ## Install
 
 ```bash
@@ -23,10 +25,10 @@ var client = AnypostClient.Create("ap_your_api_key");
 
 var sent = await client.Email.SendAsync(new SendEmailRequest
 {
-    From = "Acme <you@yourdomain.com>",
-    To = ["someone@example.com"],
-    Subject = "Hello from Anypost",
-    Html = "<p>It worked.</p>",
+    From = "YourCo <you@yourdomain.com>",
+    To = ["you@example.com"],
+    Subject = "Welcome to Anypost",
+    Html = "<p>Hello, inbox!</p>",
 });
 
 Console.WriteLine(sent.Id);
@@ -40,7 +42,7 @@ key server-side; it is a bearer credential.
 In an ASP.NET Core or Worker host, register the client with `AddAnypost` and
 inject `IAnypostClient`. This wires an `IHttpClientFactory`-managed typed client,
 so the underlying `HttpClient` is pooled and its handler lifetime is managed for
-you — no socket exhaustion from per-request clients.
+you, with no socket exhaustion from per-request clients.
 
 ```csharp
 using Anypost;
@@ -58,7 +60,7 @@ public sealed class WelcomeMailer(IAnypostClient anypost)
     public Task SendAsync(string to) =>
         anypost.Email.SendAsync(new SendEmailRequest
         {
-            From = "Acme <you@yourdomain.com>",
+            From = "YourCo <you@yourdomain.com>",
             To = [to],
             Subject = "Welcome",
             Html = "<p>Glad you are here.</p>",
@@ -69,7 +71,7 @@ public sealed class WelcomeMailer(IAnypostClient anypost)
 `AddAnypost` returns the `IHttpClientBuilder`, so you can layer on transport
 configuration (a custom primary handler, Polly resilience policies, and so on).
 With no configuration, `AddAnypost()` reads the key from `ANYPOST_API_KEY`.
-Outside a host — console apps, scripts, tests — construct the client directly
+Outside a host (console apps, scripts, tests) construct the client directly
 with `AnypostClient.Create(...)`; no container required.
 
 ## Sending
@@ -80,7 +82,7 @@ and `Bcc` share one envelope and count against a combined limit of 50.
 ```csharp
 await client.Email.SendAsync(new SendEmailRequest
 {
-    From = "Acme <you@yourdomain.com>",
+    From = "YourCo <you@yourdomain.com>",
     To = ["a@example.com", "b@example.com"],
     Cc = ["team@example.com"],
     ReplyTo = ["support@yourdomain.com"],
@@ -91,7 +93,7 @@ await client.Email.SendAsync(new SendEmailRequest
 });
 ```
 
-`Attachment` content is the raw file bytes — pass what `File.ReadAllBytes`
+`Attachment` content is the raw file bytes: pass what `File.ReadAllBytes`
 returns and the SDK base64-encodes it on the wire. Do not pre-encode it. The
 request body is capped at 5 MB.
 
@@ -100,7 +102,7 @@ byte[] pdf = File.ReadAllBytes("report.pdf");
 
 await client.Email.SendAsync(new SendEmailRequest
 {
-    From = "you@yourdomain.com",
+    From = "YourCo <you@yourdomain.com>",
     To = ["someone@example.com"],
     Subject = "Your report",
     Text = "Attached.",
@@ -113,12 +115,14 @@ Send with a published template and per-recipient variables:
 ```csharp
 await client.Email.SendAsync(new SendEmailRequest
 {
-    From = "you@yourdomain.com",
+    From = "YourCo <you@yourdomain.com>",
     To = ["someone@example.com"],
     TemplateId = "template_018f2c5e-3a40-7a91-9c25-3a0b1d5e6f78",
     Variables = new Dictionary<string, object?> { ["name"] = "Ada", ["plan"] = "pro" },
 });
 ```
+
+See the [send reference](https://anypost.com/docs/reference/emails) for the complete field list.
 
 ## Batch
 
@@ -130,7 +134,7 @@ per-entry.
 ```csharp
 var result = await client.Email.SendBatchAsync(new EmailBatchRequest
 {
-    Defaults = new SendEmailRequest { From = "you@yourdomain.com" },
+    Defaults = new SendEmailRequest { From = "YourCo <you@yourdomain.com>" },
     Emails =
     [
         new SendEmailRequest { To = ["a@example.com"], Subject = "Hi A", Text = "..." },
@@ -169,22 +173,17 @@ foreach (var record in domain.DnsRecords)
 {
     Console.WriteLine($"{record.Type} {record.Name} -> {record.Value}");
 }
-```
 
-`VerifyAsync` always returns the current domain — a still-`pending` domain is not
-an error. Read its status and verification failure, and poll while DNS
-propagates.
-
-```csharp
 var refreshed = await client.Domains.VerifyAsync(domain.Id);
-if (refreshed.Status != "verified" && refreshed.VerificationFailure is not null)
+if (refreshed.Status != "verified")
 {
-    Console.WriteLine(refreshed.VerificationFailure.Code);
+    // VerifyAsync resolves with the current domain even while pending; it never throws
+    Console.WriteLine(refreshed.VerificationFailure?.Code);
 }
 ```
 
 `GetAsync`, `UpdateAsync` (tracking config only), and `DeleteAsync` round out the
-resource.
+resource. See [Domains](https://anypost.com/docs/reference/domains) for the verification lifecycle and field reference.
 
 ## API keys
 
@@ -202,8 +201,8 @@ var created = await client.ApiKeys.CreateAsync(new ApiKeyCreateParams
 Console.WriteLine(created.Key); // store now; never retrievable again
 ```
 
-`GetAsync` returns metadata only — `KeyPrefix`, never the secret. Permission and
-restriction changes take up to 5 minutes to propagate through the gateway cache.
+`GetAsync` returns metadata only (`KeyPrefix`, never the secret); `UpdateAsync`
+and `DeleteAsync` round out the resource. See [API keys](https://anypost.com/docs/reference/api-keys) for the permission model and cache propagation.
 
 ## Templates
 
@@ -218,25 +217,19 @@ var tmpl = await client.Templates.CreateAsync(new TemplateCreateParams
     Html = "<h1>Welcome, {{ name }}</h1>",
 });
 
-await client.Templates.UpdateDraftAsync(tmpl.Id, new TemplateDraftParams
-{
-    Subject = "Welcome to Acme",
-    Html = "<h1>Welcome, {{ name }}</h1>",
-});
-
 await client.Templates.PublishAsync(tmpl.Id);
 ```
 
 `Kind` is `Html` or `Markdown` and is immutable once set. `GetDraftAsync`,
-`DeleteDraftAsync`, `DuplicateAsync`, `GetAsync`, `UpdateAsync` (name only), and
-`DeleteAsync` round out the resource. Send with a published template via
-`TemplateId` (see [Sending](#sending)).
+`UpdateDraftAsync`, `DeleteDraftAsync`, `DuplicateAsync`, `GetAsync`,
+`UpdateAsync` (name only), and `DeleteAsync` round out the resource. Send with a
+published template via `TemplateId` (see [Sending](#sending)). See [Templates](https://anypost.com/docs/reference/templates) for the full model.
 
 ## Suppressions
 
 A suppression blocks sends to an address, scoped to a `Topic`. The wildcard `*`
-blocks every topic; a specific topic (e.g. `marketing`) leaves transactional
-traffic untouched. Bounces and complaints write `*` automatically.
+blocks every topic; a named topic (e.g. `marketing`) leaves transactional
+traffic untouched.
 
 ```csharp
 await client.Suppressions.CreateAsync(new SuppressionCreateParams
@@ -246,17 +239,12 @@ await client.Suppressions.CreateAsync(new SuppressionCreateParams
     Note = "Customer requested removal",
 });
 
-var row = await client.Suppressions.GetAsync("alice@example.com", "*");
 await client.Suppressions.DeleteAsync("alice@example.com", "marketing");
-
-var complaints = await client.Suppressions.ListAsync(new SuppressionListParams
-{
-    Reason = SuppressionReason.Complaint,
-});
 ```
 
-`ListForEmailAsync` returns every row for an address across all topics;
-`DeleteForEmailAsync` removes them all.
+`GetAsync`, `ListAsync` (with `EmailContains`, `Topic`, `Reason`, and `Origin`
+filters), `ListForEmailAsync`, and `DeleteForEmailAsync` round out the resource.
+See [Suppressions](https://anypost.com/docs/reference/suppressions) for scoping and the automatic-suppression rules for bounces and complaints.
 
 ## Webhooks
 
@@ -274,16 +262,12 @@ var wh = await client.Webhooks.CreateAsync(new WebhookCreateParams
 Console.WriteLine(wh.SigningSecret); // store now; never retrievable again
 ```
 
-`UpdateAsync` sets the name, URL, events, and status together — set the status to
-`WebhookStatus.Disabled` to pause delivery, `Active` to resume. `TestAsync` sends
-one synthetic `webhook.test` event and returns the outcome even when the endpoint
-fails. `RotateSecretAsync` issues a new secret and keeps the previous one valid
-for a 24-hour grace window; `GetAsync`, `ListAsync`, and `DeleteAsync` round out
-the resource.
+`UpdateAsync`, `TestAsync`, `RotateSecretAsync`, `GetAsync`, `ListAsync`, and
+`DeleteAsync` round out the resource. See [Webhooks](https://anypost.com/docs/reference/webhooks) for the event catalog, status transitions, and the secret-rotation grace window.
 
 ### Verifying deliveries
 
-`WebhookVerifier` has static methods — they need the signing secret, not an API
+`WebhookVerifier` has static methods. They need the signing secret, not an API
 key, so call them in your handler without a client. Pass the **raw** request body
 (the exact bytes, before JSON parsing), the `Anypost-Signature` header, and the
 secret. `Unwrap` verifies and returns the parsed delivery in one step:
@@ -305,7 +289,7 @@ catch (WebhookVerificationException ex)
 ```
 
 Reach for `WebhookVerifier.VerifySignature(...)` when something else has already
-parsed the body — keep the raw bytes for the verify step, then use your parsed
+parsed the body: keep the raw bytes for the verify step, then use your parsed
 value once it passes. Deliveries older than five minutes are rejected by default
 to bound replay; `WebhookVerifyOptions` widens, narrows, or disables
 (`TimeSpan.Zero`) that check, and overrides the clock in tests. During a secret
@@ -316,7 +300,7 @@ any one passes, so deliveries keep verifying while you redeploy.
 
 `client.Events.ListAsync` pages the team's event stream, newest-first. The window
 defaults to the last 24 hours and is clamped to your plan's retention. Events are
-read-only and not addressable by id — there is no `Get`.
+read-only and not addressable by id, so there is no `Get`.
 
 ```csharp
 var page = await client.Events.ListAsync(new EventListParams { EventType = EventType.Bounced });
@@ -328,10 +312,10 @@ foreach (var ev in page.Data)
 ```
 
 Filter by `Start`, `End`, `EventType`, `Recipient`, `EmailId`, `MessageId`,
-`Domain`, `Topic`, `Campaign`, `TemplateId`, and `Tags`. All filters are
-exact-match, except `Tags`, which matches an event carrying *any* of the given
-tags. This is also how you backfill the gap after a webhook endpoint was disabled
-— page the events that occurred during the outage once it's healthy.
+`Domain`, `Topic`, `Campaign`, `TemplateId`, and `Tags`, which matches an event
+carrying *any* of the given tags. Every other filter is exact-match. This is also
+how you backfill the gap after a webhook endpoint was disabled: page the events
+that occurred during the outage once it's healthy. See [Events](https://anypost.com/docs/reference/events) for the field reference.
 
 ## Pagination
 
@@ -354,7 +338,7 @@ await foreach (var domain in (await client.Domains.ListAsync()).AllAsync())
 ## Errors
 
 A failed request throws an `AnypostException`. Branch on `Type`, the stable,
-machine-readable `error.type` — not on the HTTP status.
+machine-readable `error.type`, not on the HTTP status.
 
 ```csharp
 try
