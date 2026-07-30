@@ -50,6 +50,17 @@ public sealed record SendEmailRequest
     /// <summary>The suppression scope / topic bucket (<c>[a-z0-9_.-]{1,64}</c>).</summary>
     public string? Topic { get; init; }
 
+    /// <summary>
+    /// Which of your dedicated IP pools this message sends from
+    /// (<c>[a-z0-9]([a-z0-9-]*[a-z0-9])?</c>, at most 32 characters). Accounts with
+    /// dedicated IPs and more than one named pool only. Unlike <see cref="Tags"/>,
+    /// <see cref="Topic"/> and <see cref="Campaign"/> this is not a reporting label:
+    /// it changes how the message is delivered, keeping one stream's reputation and
+    /// queueing off another's. Leave it null to use the account's default pool; an
+    /// unrecognized name returns <c>422</c> listing the pools the account does have.
+    /// </summary>
+    public string? IpPool { get; init; }
+
     /// <summary>Overrides the domain's open/click defaults for this message.</summary>
     public Tracking? Tracking { get; init; }
 

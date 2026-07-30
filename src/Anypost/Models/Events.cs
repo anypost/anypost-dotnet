@@ -70,10 +70,27 @@ public sealed record Event
     /// <summary>The customer-supplied tags from the originating send.</summary>
     public IReadOnlyList<string>? Tags { get; init; }
 
+    /// <summary>
+    /// Which dedicated IP pool the message egressed from. Null on sends that named no
+    /// pool and on accounts without dedicated IPs. Set on every event for the message,
+    /// not just <c>email.sent</c>, so bounce and complaint rates can be read per pool.
+    /// </summary>
+    public string? IpPool { get; init; }
+
     /// <summary>The SMTP reply code observed, or null without an SMTP exchange.</summary>
     public int? SmtpCode { get; init; }
 
-    /// <summary>The bounce type (e.g. Hard, Soft). Only on <c>email.bounced</c>.</summary>
+    /// <summary>
+    /// Why the message failed. Only on <c>email.bounced</c>, and one of:
+    /// <list type="bullet">
+    /// <item><c>permanent</c> — the receiver refused the address outright (5xx). The
+    /// address is suppressed; this is what counts against list quality.</item>
+    /// <item><c>transient</c> — a temporary failure still unresolved when the message
+    /// was reported, e.g. an out-of-band 4xx DSN.</item>
+    /// <item><c>expired</c> — aged out of the retry queue after 72 hours without ever
+    /// reaching the receiver. Not a hard bounce, and the address is not suppressed.</item>
+    /// </list>
+    /// </summary>
     public string? BounceType { get; init; }
 
     /// <summary>The bounce classification. Only on <c>email.bounced</c>.</summary>
@@ -126,6 +143,14 @@ public sealed class EventListParams : ListParams
     /// <summary>The template the originating send used.</summary>
     public string? TemplateId { get; init; }
 
+    /// <summary>
+    /// Restricts to mail that egressed from this named dedicated IP pool. Exact match
+    /// against the <c>[a-z0-9]([a-z0-9-]*[a-z0-9])?</c> pool-name shape; a value outside
+    /// it returns an empty list rather than being ignored, so a typo cannot silently
+    /// widen the answer to "all pools".
+    /// </summary>
+    public string? IpPool { get; init; }
+
     /// <summary>Restricts to events carrying any of these tags (has-any). Up to 10.</summary>
     public IReadOnlyList<string>? Tags { get; init; }
 
@@ -142,6 +167,7 @@ public sealed class EventListParams : ListParams
         query.Add("topic", Topic);
         query.Add("campaign", Campaign);
         query.Add("template_id", TemplateId);
+        query.Add("ip_pool", IpPool);
         if (Tags is { Count: > 0 })
         {
             query.Add("tags", string.Join(",", Tags));
