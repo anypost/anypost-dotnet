@@ -59,7 +59,7 @@ public class ClientTests
     public async Task Whoami_parses_team_and_key()
     {
         using var client = TestClient.Create(out var handler, out _);
-        handler.Enqueue(HttpStatusCode.OK, """{"team":{"id":"team_1","name":"Acme"},"api_key":{"id":"key_1","permissions":"send_only"}}""");
+        handler.Enqueue(HttpStatusCode.OK, """{"team":{"id":"team_1","name":"Acme"},"api_key":{"id":"key_1","permissions":"send_only"},"limits":{"daily":5000,"monthly":100000,"delivery_rate_per_minute":600}}""");
 
         var me = await client.WhoamiAsync();
 
@@ -67,6 +67,20 @@ public class ClientTests
         Assert.Equal("Acme", me.Team.Name);
         Assert.Equal("key_1", me.ApiKey.Id);
         Assert.Equal(Permissions.SendOnly, me.ApiKey.Permissions);
+        Assert.Equal(5000, me.Limits!.Daily);
+        Assert.Equal(100000, me.Limits.Monthly);
+        Assert.Equal(600, me.Limits.DeliveryRatePerMinute);
+    }
+
+    [Fact]
+    public async Task Whoami_limits_are_null_when_the_team_is_unresolved()
+    {
+        using var client = TestClient.Create(out var handler, out _);
+        handler.Enqueue(HttpStatusCode.OK, """{"team":null,"api_key":{"id":"key_1","permissions":"full"},"limits":null}""");
+
+        var me = await client.WhoamiAsync();
+
+        Assert.Null(me.Limits);
     }
 
     [Fact]
