@@ -93,9 +93,11 @@ await client.Email.SendAsync(new SendEmailRequest
 });
 ```
 
-`Attachment` content is the raw file bytes: pass what `File.ReadAllBytes`
-returns and the SDK base64-encodes it on the wire. Do not pre-encode it. The
-request body is capped at 5 MB.
+`Attachment.Create` takes the raw file bytes: pass what `File.ReadAllBytes`
+returns and the SDK base64-encodes them on the wire. When the content is already
+base64 at rest, use `Attachment.FromBase64` instead — that string is sent
+verbatim, so nothing is decoded just to be re-encoded. Set exactly one of the
+two. The request body is capped at 5 MB.
 
 ```csharp
 byte[] pdf = File.ReadAllBytes("report.pdf");

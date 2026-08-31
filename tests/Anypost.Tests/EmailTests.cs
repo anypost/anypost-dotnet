@@ -123,4 +123,77 @@ public class EmailTests
         Assert.Equal(Convert.ToBase64String("hello"u8.ToArray()), attachment.GetProperty("content").GetString());
         Assert.Equal("text/plain", attachment.GetProperty("content_type").GetString());
     }
+
+    [Fact]
+    public async Task Base64_attachment_content_is_sent_through_unchanged()
+    {
+        using var client = TestClient.Create(out var handler, out _);
+        handler.Enqueue(HttpStatusCode.Accepted, """{"id":"email_1","created_at":"2026-01-01T00:00:00Z"}""");
+
+        var alreadyEncoded = Convert.ToBase64String("hello"u8.ToArray());
+
+        await client.Email.SendAsync(new SendEmailRequest
+        {
+            From = "a@b.com",
+            To = ["c@d.com"],
+            Subject = "s",
+            Text = "hi",
+            Attachments = [Attachment.FromBase64("hello.txt", alreadyEncoded, "text/plain")],
+        });
+
+        using var body = JsonDocument.Parse(Assert.Single(handler.Requests).Body!);
+        var attachment = body.RootElement.GetProperty("attachments")[0];
+        Assert.Equal("hello.txt", attachment.GetProperty("filename").GetString());
+        Assert.Equal(alreadyEncoded, attachment.GetProperty("content").GetString());
+        Assert.Equal("text/plain", attachment.GetProperty("content_type").GetString());
+        // The wire object carries only `content` — no second content property leaks out.
+        Assert.False(attachment.TryGetProperty("content_base64", out _));
+    }
+
+    [Fact]
+    public async Task Inline_base64_attachment_carries_its_content_id()
+    {
+        using var client = TestClient.Create(out var handler, out _);
+        handler.Enqueue(HttpStatusCode.Accepted, """{"id":"email_1","created_at":"2026-01-01T00:00:00Z"}""");
+
+        var alreadyEncoded = Convert.ToBase64String("png-bytes"u8.ToArray());
+
+        await client.Email.SendAsync(new SendEmailRequest
+        {
+            From = "a@b.com",
+            To = ["c@d.com"],
+            Subject = "s",
+            Html = """<img src="cid:logo">""",
+            Attachments = [Attachment.InlineFromBase64("logo.png", alreadyEncoded, "logo", "image/png")],
+        });
+
+        using var body = JsonDocument.Parse(Assert.Single(handler.Requests).Body!);
+        var attachment = body.RootElement.GetProperty("attachments")[0];
+        Assert.Equal(alreadyEncoded, attachment.GetProperty("content").GetString());
+        Assert.Equal("logo", attachment.GetProperty("content_id").GetString());
+        Assert.Equal("image/png", attachment.GetProperty("content_type").GetString());
+    }
+
+    [Fact]
+    public void Attachment_with_both_content_forms_is_rejected()
+    {
+        var attachment = new Attachment
+        {
+            Filename = "hello.txt",
+            Content = "hello"u8.ToArray(),
+            ContentBase64 = Convert.ToBase64String("hello"u8.ToArray()),
+        };
+
+        var ex = Assert.Throws<InvalidOperationException>(() => attachment.WireContent());
+        Assert.Contains("hello.txt", ex.Message);
+    }
+
+    [Fact]
+    public void Attachment_with_no_content_is_rejected()
+    {
+        var attachment = new Attachment { Filename = "empty.txt" };
+
+        var ex = Assert.Throws<InvalidOperationException>(() => attachment.WireContent());
+        Assert.Contains("empty.txt", ex.Message);
+    }
 }

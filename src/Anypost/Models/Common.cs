@@ -1,16 +1,30 @@
+using System;
+
 namespace Anypost.Models;
 
 /// <summary>
-/// One attachment on a message. <see cref="Content"/> is the raw file bytes; the
-/// SDK base64-encodes it on the wire — do not pre-encode it.
+/// One attachment on a message. Supply the content exactly one of two ways:
+/// <see cref="Content"/> for raw file bytes, which the SDK base64-encodes on the
+/// wire, or <see cref="ContentBase64"/> when the data is already base64 at rest —
+/// that string is sent through untouched, so nothing is decoded just to be
+/// re-encoded.
 /// </summary>
 public sealed record Attachment
 {
     /// <summary>The file name shown to the recipient.</summary>
     public required string Filename { get; init; }
 
-    /// <summary>The raw file bytes; encoded to base64 on the wire.</summary>
-    public required byte[] Content { get; init; }
+    /// <summary>
+    /// The raw file bytes; encoded to base64 on the wire. Leave null when
+    /// setting <see cref="ContentBase64"/> instead.
+    /// </summary>
+    public byte[]? Content { get; init; }
+
+    /// <summary>
+    /// Already-base64-encoded file content, sent verbatim. Leave null when
+    /// setting <see cref="Content"/> instead.
+    /// </summary>
+    public string? ContentBase64 { get; init; }
 
     /// <summary>The MIME type. Defaults to <c>application/octet-stream</c> server-side when null.</summary>
     public string? ContentType { get; init; }
@@ -18,13 +32,58 @@ public sealed record Attachment
     /// <summary>Marks the attachment inline, referenced from the HTML via <c>cid:</c>.</summary>
     public string? ContentId { get; init; }
 
-    /// <summary>Creates a regular (non-inline) attachment.</summary>
+    /// <summary>Creates a regular (non-inline) attachment from raw bytes.</summary>
     public static Attachment Create(string filename, byte[] content, string? contentType = null) =>
         new() { Filename = filename, Content = content, ContentType = contentType };
+
+    /// <summary>Creates a regular (non-inline) attachment from already-base64-encoded content.</summary>
+    public static Attachment FromBase64(string filename, string contentBase64, string? contentType = null) =>
+        new() { Filename = filename, ContentBase64 = contentBase64, ContentType = contentType };
 
     /// <summary>Creates an inline attachment referenced from the HTML body via <c>cid:contentId</c>.</summary>
     public static Attachment Inline(string filename, byte[] content, string contentId, string? contentType = null) =>
         new() { Filename = filename, Content = content, ContentId = contentId, ContentType = contentType };
+
+    /// <summary>
+    /// Creates an inline attachment from already-base64-encoded content, referenced
+    /// from the HTML body via <c>cid:contentId</c>.
+    /// </summary>
+    public static Attachment InlineFromBase64(
+        string filename,
+        string contentBase64,
+        string contentId,
+        string? contentType = null) =>
+        new()
+        {
+            Filename = filename,
+            ContentBase64 = contentBase64,
+            ContentId = contentId,
+            ContentType = contentType,
+        };
+
+    /// <summary>
+    /// The base64 string to put on the wire. Throws when the two content
+    /// properties are set together or not at all, which is a construction
+    /// mistake the object-initializer syntax cannot catch at compile time.
+    /// </summary>
+    internal string WireContent()
+    {
+        if (Content is not null && ContentBase64 is not null)
+        {
+            throw new InvalidOperationException(
+                $"Attachment '{Filename}' sets both Content and ContentBase64. Set exactly one.");
+        }
+        if (ContentBase64 is not null)
+        {
+            return ContentBase64;
+        }
+        if (Content is not null)
+        {
+            return Convert.ToBase64String(Content);
+        }
+        throw new InvalidOperationException(
+            $"Attachment '{Filename}' has no content. Set Content (raw bytes) or ContentBase64.");
+    }
 }
 
 /// <summary>

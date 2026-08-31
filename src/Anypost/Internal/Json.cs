@@ -23,6 +23,7 @@ internal static class Json
             NumberHandling = JsonNumberHandling.AllowReadingFromString,
         };
         options.Converters.Add(new StringEnumConverterFactory());
+        options.Converters.Add(new AttachmentConverter());
         return options;
     }
 
