@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
@@ -17,7 +18,7 @@ public sealed class SuppressionsService
 
     internal SuppressionsService(RequestExecutor http) => _http = http;
 
-    /// <summary>Returns one page of the team's suppressions, newest-first. Expired rows are filtered out.</summary>
+    /// <summary>Returns one page of the team's suppressions, newest-first.</summary>
     public Task<Page<Suppression>> ListAsync(
         SuppressionListParams? listParams = null,
         RequestOptions? options = null,
@@ -33,6 +34,20 @@ public sealed class SuppressionsService
         RequestOptions? options = null,
         CancellationToken cancellationToken = default) =>
         _http.SendAsync<Suppression>(HttpMethod.Post, "/suppressions", request, idempotent: false, query: null, options, cancellationToken);
+
+    /// <summary>
+    /// Adds up to 1,000 manual suppressions in one request. Entries that already
+    /// exist are counted in <see cref="SuppressionBatchResult.AlreadySuppressed"/> and
+    /// left unchanged, so a batch is safe to retry. Invalid addresses come back in
+    /// <see cref="SuppressionBatchResult.Invalid"/> instead of failing the batch.
+    /// Returns a validation_error (nothing is added) if the batch would pass the
+    /// team's suppression limit.
+    /// </summary>
+    public Task<SuppressionBatchResult> CreateBatchAsync(
+        IEnumerable<SuppressionBatchItem> items,
+        RequestOptions? options = null,
+        CancellationToken cancellationToken = default) =>
+        _http.SendAsync<SuppressionBatchResult>(HttpMethod.Post, "/suppressions/batch", new SuppressionBatchRequest { Suppressions = items.ToList() }, idempotent: false, query: null, options, cancellationToken);
 
     /// <summary>
     /// Retrieves the suppression for an (email, topic) pair. Use <c>*</c> as the

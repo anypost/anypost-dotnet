@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Anypost.Internal;
 
 namespace Anypost.Models;
@@ -30,7 +31,10 @@ public sealed record Suppression
     /// <summary>When the suppression was first observed.</summary>
     public string SuppressedAt { get; init; } = "";
 
-    /// <summary>When it stops applying; null means never.</summary>
+    /// <summary>
+    /// Always null: suppressions do not expire. Kept for compatibility and will be
+    /// removed in a future major version.
+    /// </summary>
     public string? ExpiresAt { get; init; }
 
     public string CreatedAt { get; init; } = "";
@@ -69,4 +73,52 @@ public sealed record SuppressionCreateParams
 
     /// <summary>An optional internal annotation, preserved across automatic re-suppressions.</summary>
     public string? Note { get; init; }
+}
+
+/// <summary>One entry in a batch of manual suppressions.</summary>
+public sealed record SuppressionBatchItem
+{
+    public required string Email { get; init; }
+
+    /// <summary>Scopes the suppression. Omit or <c>*</c> to block every topic.</summary>
+    public string? Topic { get; init; }
+
+    /// <summary>
+    /// A free-form reason. The server maps <c>permanent_bounce</c>, <c>complaint</c>,
+    /// <c>unsubscribed</c>, <c>manual</c>, and common equivalents such as <c>hard bounce</c>
+    /// or <c>spam report</c> (case and punctuation ignored); anything else records <c>manual</c>.
+    /// </summary>
+    public string? Reason { get; init; }
+
+    /// <summary>An optional internal annotation, up to 2000 characters.</summary>
+    public string? Note { get; init; }
+}
+
+/// <summary>The wire body for a batch create.</summary>
+internal sealed record SuppressionBatchRequest
+{
+    public IReadOnlyList<SuppressionBatchItem> Suppressions { get; init; } = new List<SuppressionBatchItem>();
+}
+
+/// <summary>The outcome of a batch create.</summary>
+public sealed record SuppressionBatchResult
+{
+    /// <summary>Suppressions this call created.</summary>
+    public int Imported { get; init; }
+
+    /// <summary>Entries whose (email, topic) was already suppressed, including repeats within the batch. Left unchanged.</summary>
+    public int AlreadySuppressed { get; init; }
+
+    /// <summary>Entries whose email is not a valid address.</summary>
+    public IReadOnlyList<SuppressionBatchInvalid> Invalid { get; init; } = new List<SuppressionBatchInvalid>();
+}
+
+/// <summary>An entry a batch create rejected as an invalid address.</summary>
+public sealed record SuppressionBatchInvalid
+{
+    /// <summary>The entry's zero-based position in the request.</summary>
+    public int Index { get; init; }
+
+    /// <summary>The address as sent, or null if none was usable.</summary>
+    public string? Email { get; init; }
 }
