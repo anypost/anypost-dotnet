@@ -244,6 +244,18 @@ await client.Suppressions.CreateAsync(new SuppressionCreateParams
 await client.Suppressions.DeleteAsync("alice@example.com", "marketing");
 ```
 
+Add up to 1,000 at once with `CreateBatchAsync`. Entries that already exist are
+counted in `AlreadySuppressed` and left unchanged, so a batch is safe to retry,
+and invalid addresses come back in `Invalid` instead of failing the batch.
+
+```csharp
+var result = await client.Suppressions.CreateBatchAsync([
+    new SuppressionBatchItem { Email = "alice@example.com", Reason = "hard bounce" },
+    new SuppressionBatchItem { Email = "bob@example.com", Topic = "marketing" },
+]);
+Console.WriteLine($"{result.Imported} added, {result.AlreadySuppressed} already suppressed, {result.Invalid.Count} invalid");
+```
+
 `GetAsync`, `ListAsync` (with `EmailContains`, `Topic`, `Reason`, and `Origin`
 filters), `ListForEmailAsync`, and `DeleteForEmailAsync` round out the resource.
 See [Suppressions](https://anypost.com/docs/reference/suppressions) for scoping and the automatic-suppression rules for bounces and complaints.
